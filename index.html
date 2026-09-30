@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D-Day Quest</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@latest/dist/galmuri.css">
+<style>
+  :root{
+    --ink:#2b2140; --white:#fffdf6; --yellow:#ffe66d; --pink:#ff5f7a; --purple:#b9a6ff;
+    --sky1:#2d2a6e; --sky2:#4b3b98; --sky3:#6b4fb3; --sky4:#c77fc4; --sky5:#ff9ec4;
+    --grass:#5c8f5a; --dirt:#8d6a5a;
+  }
+  body[data-theme="day"]{ --sky1:#a8e2ff; --sky2:#bfeaff; --sky3:#d6f2ff; --sky4:#e7f8ff; --sky5:#f4fcff; --grass:#7ad66a; --dirt:#c99a6b; }
+  body[data-theme="pink"]{ --sky1:#ffd6e8; --sky2:#f5d4f5; --sky3:#e7d4ff; --sky4:#d7d8ff; --sky5:#c9dcff; --grass:#7ad66a; --dirt:#c99a6b; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:'Galmuri11','Galmuri9',ui-monospace,monospace;
+    background:linear-gradient(180deg,var(--sky1) 0 20%,var(--sky2) 20% 40%,var(--sky3) 40% 60%,var(--sky4) 60% 78%,var(--sky5) 78% 100%);
+    color:var(--white); overflow:hidden; position:relative;
+    -webkit-font-smoothing:none; image-rendering:pixelated;
+  }
+  .stars i{position:absolute;width:3px;height:3px;background:#fff;animation:tw 2.4s steps(2) infinite}
+  body[data-theme="day"] .stars, body[data-theme="pink"] .stars{display:none}
+  @keyframes tw{50%{opacity:.15}}
+  .ground{position:absolute;left:0;right:0;bottom:0;height:14%;background:var(--dirt);border-top:6px solid var(--grass)}
+  .wrap{position:relative;z-index:1;height:100%;display:grid;grid-template-columns:1fr auto 1fr;align-items:end;
+        padding:10px 4% calc(14vh + 2px);gap:2%}
+  svg{display:block;width:100%;height:auto;shape-rendering:crispEdges}
+  .hero{justify-self:end;width:min(125px,24vw);margin-bottom:-2px}
+  .boss{justify-self:start;width:min(70px,13.5vw);margin-bottom:-2px;position:relative}
+  .card{align-self:center;background:var(--ink);border:4px solid var(--white);box-shadow:0 0 0 4px var(--ink),6px 8px 0 4px rgba(26,20,51,.45);
+        padding:12px 18px 14px;text-align:center;min-width:200px}
+  .title{font-size:12px;color:var(--yellow);letter-spacing:1px}
+  .dday{font-family:'Galmuri11',monospace;font-weight:700;font-size:clamp(34px,11vw,64px);line-height:1.05;margin:4px 0 2px;
+        color:var(--yellow);text-shadow:3px 3px 0 var(--pink)}
+  .goal{font-size:12px;color:var(--white)}
+  .date{font-size:11px;color:var(--purple);margin-top:2px}
+  .hp{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11px}
+  .hp b{color:#ff4d6d;font-weight:400}
+  .bar{flex:1;height:10px;background:#3a3350;border:2px solid #120d22;position:relative}
+  .bar span{position:absolute;inset:0 auto 0 0;background:var(--c,#59d66b);box-shadow:inset 0 2px 0 rgba(255,255,255,.35)}
+  .hp em{font-style:normal;min-width:44px;text-align:right}
+  .msg{margin-top:8px;font-size:11px;color:var(--yellow);animation:blink 1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+  .clear{position:absolute;left:50%;top:-34px;transform:translateX(-50%);font-size:16px;color:var(--yellow);text-shadow:2px 2px 0 var(--pink);white-space:nowrap}
+  @media (max-width:420px){
+    .wrap{grid-template-columns:1fr;justify-items:center;align-items:center;padding:10px}
+    .hero,.boss{display:none}
+    .card{min-width:0;width:100%}
+  }
+</style>
+</head>
+<body>
+<div class="stars" id="stars"></div>
+<div class="ground"></div>
+<main class="wrap">
+  <div class="hero" id="hero"></div>
+  <section class="card">
+    <div class="title" id="title">THESIS QUEST</div>
+    <div class="dday" id="dday">D-0</div>
+    <div class="goal" id="goal"></div>
+    <div class="date" id="date"></div>
+    <div class="hp"><b>HP</b><div class="bar"><span id="bar"></span></div><em id="hpnum"></em></div>
+    <div class="msg" id="msg"></div>
+  </section>
+  <div class="boss" id="boss"></div>
+</main>
+<script>
+(() => {
+  // ---------- settings: change via URL, e.g. ?title=THESIS%20QUEST&goal=논문%20초안%20완성&date=2026-11-01&start=2026-09-28&theme=night
+  const q = new URLSearchParams(location.search);
+  const cfg = {
+    title: q.get('title') || 'THESIS QUEST',
+    goal:  q.get('goal')  || '논문 초안 완성',
+    date:  q.get('date')  || '2026-11-01',
+    start: q.get('start') || '2026-09-28',
+    theme: q.get('theme') || 'night',       // night | day | pink
+  };
+  document.body.dataset.theme = cfg.theme;
+
+  const parse = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+  const now = new Date(); const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const DAY = 86400000;
+  const target = parse(cfg.date), start = parse(cfg.start);
+  const left  = Math.round((target - today) / DAY);
+  const total = Math.max(1, Math.round((target - start) / DAY));
+  const hp    = Math.min(total, Math.max(0, left));
+  const frac  = hp / total;
+
+  // ---------- text
+  const $ = id => document.getElementById(id);
+  $('title').textContent = cfg.title;
+  $('goal').textContent  = cfg.goal;
+  $('dday').textContent  = left > 0 ? `D-${left}` : left === 0 ? 'D-DAY' : `D+${-left}`;
+  const p2 = n => String(n).padStart(2,'0');
+  $('date').textContent  = `${target.getFullYear()}.${p2(target.getMonth()+1)}.${p2(target.getDate())}`;
+  $('bar').style.width = (frac*100) + '%';
+  $('bar').style.setProperty('--c', frac > .6 ? '#59d66b' : frac > .3 ? '#ffc93c' : '#ff4d6d');
+  $('hpnum').textContent = `${hp}/${total}`;
+  $('msg').textContent = left > 0 ? '▶ 오늘도 한 칸 전진!' : left === 0 ? '▶ 보스전 당일!' : '▶ QUEST CLEAR!';
+
+  // ---------- pixel sprites
+  const PAL = {k:'#2b2140',w:'#fffdf6',p:'#fdf6e3',e:'#2b2140',l:'#b9b2c9',f:'#e2d7bd',r:'#ff4d6d',b:'#7ecbff',n:'#f4c7a1',x:'#ff8fab'};
+  const CAT = [".k...........k.","kwk.........kwk","kwpk.......kpwk","kwwwkkkkkkkwwwk","kwwwwwwwwwwwwwk","kwwwwwwwwwwwwwk","kwwwewwwwwewwwk","kwwwewwkwwewwwk","kwppwwwwwwwppwk","kwwwwwkwkwwwwwk",".kwwwwwwwwwwwk.","..kkkkkkkkkkk..","...kwwwwwwwk...","...kwwkkkwwk...","...kkk...kkk..."];
+  const CAT_PAL = {...PAL, p:'#ffa8c5'};
+  const BOSS = [
+    ["kkkkkkkkkk....","kppppppppkk...","kpllllllpkfk..","kpllllllpkffk.","kppppppppkkkkk","kppkppppppkppk","kpppkppppkpppk","kppprpppprpppk","kppprpppprpppk","kppppkwkkppppk","kppppkwwkppppk","kpllllllllllpk","kpllllllpppppk","kppppppppppppk","kkkkkkkkkkkkkk","...k......k...","..kk......kk.."],
+    ["kkkkkkkkkk....","kppppppppkk...","kpllllllpkfk..","kpllllllpkffk.","kppppppppkkkkk","kppkppppppkppk","kpppkppppkpppk","kppprpppprpppk","kppprpppprpppk","kppppkkkkppppk","kpppppwppppppk","kpllllllllllpk","kpllllllpppppk","kppppppppppppk","kkkkkkkkkkkkkk","...k......k...","..kk......kk.."],
+    ["kkkkkkkkkk....","kppppppppkk...","kpllllllpkfk..","kpllllllpkffk.","kppppppppkkkkk","kpppppppppppbk","kppkkppppkkpbk","kpppkppppkpppk","kppppppppppppk","kppppkpkpppppk","kpppppkpkppppk","kpllllllllllpk","kpllllllpppppk","kppppppppppppk","kkkkkkkkkkkkkk","...k......k...","..kk......kk.."],
+    ["kkkkkkkkkk....","kppppppppkk...","kpllllllpkfk..","kpnlllllpkffk.","knnnnnpppkkkkk","kpppnppppppppk","kppkpkppkpkppk","kpppkppppkpppk","kppkpkppkpkppk","kpppppkkpppppk","kppppkkkkppppk","kpllllllllllpk","kpllllllpppppk","kppppppppppppk","kkkkkkkkkkkkkk","...k......k...","..kk......kk.."],
+    ["kkkkkkkkkk....","kppppppppkk...","kpllllllpkfk..","kpllllllpkffk.","kppppppppkkkkk","kpppkppppkpppk","kppkpkppkpkppk","kpxppkppkppxpk","kpppppkkpppppk","kppppppppppppk","kppppppppppppk","kppppppppppppk","kppppppppppppk","kppppppppppppk","kkkkkkkkkkkkkk","...k......k...","..kk......kk.."]
+  ];
+  const SWORD = [['#b07a45','#6b4523'],['#c9d3e0','#6b4523'],['#ffd24a','#8a3ab9'],['#6ff0ff','#3a4bd6'],['rainbow','#ff5fa2']];
+  const RAINBOW = ['#ff5f5f','#ffb347','#ffe66d','#7ee081','#5ec8ff','#b28dff'];
+
+  function svg(rows, pal, extra = '', w = rows[0].length, h = rows.length, ox = 0, oy = 0) {
+    let r = '';
+    rows.forEach((row, y) => [...row].forEach((c, x) => {
+      if (c !== '.') r += `<rect x="${x+ox}" y="${y+oy}" width="1.02" height="1.02" fill="${pal[c]}"/>`;
+    }));
+    return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">${r}${extra}</svg>`;
+  }
+
+  // stage: 0..3 fighting, 4 = cleared (boss happy)
+  const stage = left <= 0 ? 4 : Math.min(3, Math.floor((1 - frac) * 4));
+  const swordLv = left <= 0 ? 4 : stage;
+
+  // hero with sword (sword drawn in a wider viewBox)
+  const [blade, hilt] = SWORD[swordLv];
+  let sw = '';
+  const L = 5 + swordLv;
+  for (let i = 0; i < L; i++) {
+    const col = blade === 'rainbow' ? RAINBOW[i % 6] : blade;
+    sw += `<rect x="${15 + i}" y="${10 - i}" width="1.02" height="1.02" fill="${col}"/>`;
+  }
+  sw += `<rect x="13" y="10" width="3" height="1" fill="${hilt}"/><rect x="13" y="11" width="1" height="1" fill="${hilt}"/>`;
+  if (left <= 0) sw += `<g fill="#ffd24a"><rect x="5" y="-3" width="5" height="2"/><rect x="5" y="-4" width="1" height="1"/><rect x="7" y="-4" width="1" height="1"/><rect x="9" y="-4" width="1" height="1"/></g>`;
+  $('hero').innerHTML = svg(CAT, CAT_PAL, sw).replace(/viewBox="[^"]*"/, 'viewBox="0 -5 25 20"');
+
+  $('boss').innerHTML = svg(BOSS[stage], PAL) + (left <= 0 ? '<div class="clear">CLEAR!</div>' : '');
+
+  // ---------- twinkling stars
+  const st = $('stars');
+  for (let i = 0; i < 40; i++) {
+    const s = document.createElement('i');
+    s.style.left = Math.random() * 100 + '%';
+    s.style.top = Math.random() * 70 + '%';
+    s.style.animationDelay = (Math.random() * 2.4).toFixed(2) + 's';
+    if (Math.random() < .3) s.style.background = '#fff3a8';
+    st.appendChild(s);
+  }
+})();
+</script>
+</body>
+</html>
